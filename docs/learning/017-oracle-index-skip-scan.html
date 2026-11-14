@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Index Skip Scan과 비용 판단 · SQL 학습 노트</title>
+  <style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    pre { overflow:auto; padding:16px; background:#f3f6f8; border-radius:8px; font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+    table { width:100%; border-collapse:collapse }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top }
+    th { background:#f3f6f8 }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+    <nav class="doc-nav" aria-label="1장 하위 주제">
+      <a href="archive/001-sql-processing.html">001 · SQL 처리, 캐시와 실행 계획</a>
+      <a href="002-oracle-storage-structure.html">002 · Oracle 저장 구조와 데이터 파일</a>
+      <a href="003-io-tuning.html">003 · I/O 튜닝과 SQL의 읽기량</a>
+      <a href="004-oracle-storage-io-summary.html">004 · Oracle 저장 구조·I/O·캐시 요약</a>
+      <a href="005-oracle-index-scan.html">005 · 인덱스의 수직 탐색과 수평 탐색</a>
+      <a href="006-oracle-index-block-rowid-trees.html">006 · 인덱스 블록·ROWID와 B+·B* 트리</a>
+      <a href="007-oracle-index-block-entry.html">007 · 인덱스 블록과 엔트리</a>
+      <a href="008-oracle-row-vs-index-entry.html">008 · 테이블 레코드와 인덱스 엔트리</a>
+      <a href="009-oracle-table-index-storage-hierarchy.html">009 · 테이블·인덱스의 블록 저장 관계</a>
+      <a href="010-oracle-index-tuning-and-column-order.html">010 · 인덱스 튜닝과 컬럼 순서</a>
+      <a href="011-oracle-composite-index-leading-column.html">011 · 복합 인덱스의 선두 컬럼 선택</a>
+      <a href="012-oracle-use-concat-mysql-index-merge.html">012 · Oracle USE_CONCAT과 MySQL Index Merge</a>
+      <a href="013-or-index-order-by-sort-io.html">013 · OR·IN 조건과 ORDER BY 정렬 I/O</a>
+      <a href="014-oracle-range-scan-minmax-first-rows.html">014 · 역방향 스캔, MIN/MAX와 FIRST_ROWS</a>
+      <a href="015-oracle-index-full-scan-vs-table-full-scan.html">015 · Index Full Scan과 Table Full Scan</a>
+      <a href="016-oracle-index-fast-full-scan.html">016 · Index Fast Full Scan의 사용 시점</a>
+      <a href="017-oracle-index-skip-scan.html" aria-current="page">017 · Index Skip Scan과 비용 판단</a>
+    <a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+  </aside>
+  <main class="doc-main" id="main-content">
+    <header class="doc-header"><h1>Index Skip Scan과 비용 판단</h1><p class="doc-purpose">복합 인덱스의 선두 컬럼 조건이 빠졌을 때, 후행 컬럼 조건으로 탐색하는 원리와 옵티마이저의 선택 기준을 정리합니다.</p></header>
+    <section class="doc-section" aria-labelledby="idea-title">
+      <h2 id="idea-title">핵심: 선두 값마다 후행 컬럼 범위를 탐색</h2>
+      <p>복합 인덱스 <code>(gender, email)</code>에서 엔트리는 먼저 <code>gender</code>, 그 안에서 <code>email</code> 순서로 정렬됩니다. 쿼리가 <code>WHERE email = :email</code>만 지정하면, 전체 인덱스에서 이 이메일 하나가 차지하는 단일 연속 구간을 바로 알 수 없습니다. 이메일 값들이 gender별 구간에 나뉘어 있기 때문입니다.</p>
+      <p>선두 컬럼의 값이 적다면 Oracle은 값을 하나씩 가정해 하위 인덱스처럼 탐색할 수 있습니다. 예를 들어 <code>gender</code>가 <code>F</code>, <code>M</code> 두 값이면 개념적으로 다음 두 범위를 확인합니다.</p>
+      <pre aria-label="Index Skip Scan의 개념적 탐색">(gender = 'F' AND email = :email)
+(gender = 'M' AND email = :email)</pre>
+      <p>각 선두 값에 해당하는 논리적 하위 인덱스에서 <code>email</code> 범위를 찾고, 조건에 맞지 않는 인덱스 블록은 건너뜁니다. Oracle 문서는 이를 개념적으로 여러 탐색의 <code>UNION ALL</code>처럼 설명하지만, 실제 SQL을 여러 문장으로 바꾸어 실행한다는 뜻은 아닙니다.</p>
+      <aside class="doc-callout">Skip Scan은 인덱스 전체를 무조건 읽는 Full Scan이 아닙니다. 선두 컬럼 값별로 후행 컬럼의 일치 범위를 찾아 읽는 접근 경로입니다.</aside>
+    </section>
+    <section class="doc-section" aria-labelledby="conditions-title">
+      <h2 id="conditions-title">언제 유리한가</h2>
+      <ul>
+        <li>쿼리 조건에 인덱스의 선두 컬럼이 빠져 있습니다.</li>
+        <li>선두 컬럼의 서로 다른 값이 적어 반복 탐색 횟수가 적습니다.</li>
+        <li>조건에 사용된 후행 컬럼은 값의 종류가 많고, 조건이 적은 행만 선택합니다.</li>
+        <li>찾은 행의 ROWID로 테이블을 방문하는 비용까지 포함해도 다른 접근 경로보다 쌉니다.</li>
+      </ul>
+      <p>예를 들어 <code>(gender, email)</code> 인덱스에서 성별 값은 두 종류뿐이고 이메일은 대부분 고유하다면, 이메일 하나를 찾기 위해 두 하위 범위만 탐색하는 방법이 전체 인덱스나 테이블을 읽는 것보다 쌀 수 있습니다. 필요한 결과 컬럼이 인덱스에 없으면 실행 계획에는 보통 <code>TABLE ACCESS BY INDEX ROWID</code>도 나타납니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="cost-title">
+      <h2 id="cost-title">왜 항상 Skip Scan을 선택하지 않을까?</h2>
+      <p>선두 컬럼의 값이 많으면 값마다 인덱스 탐색을 반복해야 합니다. 후행 컬럼 조건이 많은 행을 반환하면 ROWID를 따라 테이블 블록을 많이 방문하게 됩니다. 이때는 인덱스 전체 스캔이나 테이블 전체 스캔이 더 저렴할 수 있습니다. 작은 테이블은 조건이 꽤 선택적이어도 전체 스캔이 더 쌀 수 있습니다.</p>
+      <p>옵티마이저는 Skip Scan만 보는 것이 아니라 사용 가능한 접근 경로들의 예상 비용을 비교합니다. 선두 컬럼의 서로 다른 값 수, 후행 조건의 선택도와 예상 행 수, 인덱스 크기, 테이블 블록 수, ROWID 테이블 접근량, 통계의 정확도 등이 판단에 영향을 줍니다. 따라서 “선두 컬럼 값이 적다”는 것은 중요한 유리 조건이지, Skip Scan을 반드시 실행해야 한다는 규칙은 아닙니다.</p>
+      <table>
+        <thead><tr><th>상황</th><th>예상 판단</th></tr></thead>
+        <tbody>
+          <tr><th>선두 컬럼 값이 적고 후행 조건이 매우 선택적</th><td>반복하는 하위 범위 탐색이 적어서 Skip Scan이 유리할 수 있음</td></tr>
+          <tr><th>선두 컬럼 값이 많음</th><td>반복 탐색 비용이 커져 Skip Scan의 이점이 줄어듦</td></tr>
+          <tr><th>후행 조건이 많은 행을 반환</th><td>ROWID 테이블 접근이 늘어 Table Full Scan이 더 유리할 수 있음</td></tr>
+          <tr><th>테이블이 작거나 다른 인덱스가 더 선택적</th><td>전체 스캔 또는 다른 인덱스 경로가 더 쌀 수 있음</td></tr>
+        </tbody>
+      </table>
+      <pre aria-label="Index Skip Scan 실행 계획 예시">SELECT *
+FROM customers
+WHERE email = :email;
+
+TABLE ACCESS BY INDEX ROWID
+  INDEX SKIP SCAN  CUSTOMERS_GENDER_EMAIL_IX</pre>
+      <p>실행 계획의 <code>INDEX SKIP SCAN</code> 여부와 그 위의 테이블 접근 단계, 예상 행 수와 비용을 함께 확인합니다. Skip Scan이 자주 유리한 쿼리라면 후행 컬럼을 선두로 둔 별도 인덱스가 더 직접적인 접근 경로인지도 검토할 수 있습니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="sources-title">
+      <h2 id="sources-title">참고 자료</h2>
+      <ul>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/tgsql/optimizer-access-paths.html">Oracle AI Database SQL Tuning Guide: Index Skip Scans</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/indexes-and-index-organized-tables.html">Oracle AI Database Concepts: Indexes and Index-Organized Tables</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

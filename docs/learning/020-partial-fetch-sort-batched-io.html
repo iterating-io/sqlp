@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>부분범위처리·정렬·배치 I/O · SQL 학습 노트</title><style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    pre { overflow:auto; padding:16px; background:#f3f6f8; border-radius:8px; font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+    table { width:100%; border-collapse:collapse }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top }
+    th { background:#f3f6f8 }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style></head><body>
+<aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+<nav class="doc-nav" aria-label="2장 하위 주제">
+<a href="018-random-io-rowid-clustering-factor.html">018 · 랜덤 I/O·ROWID·클러스터링 팩터</a>
+<a href="019-joins-covering-index-iot-clusters.html">019 · 조인 방식과 테이블 저장 구조</a>
+<a href="020-partial-fetch-sort-batched-io.html" aria-current="page">020 · 부분범위처리·정렬·배치 I/O</a>
+<a href="021-between-in-cardinality-skip-scan.html">021 · BETWEEN·IN과 Skip Scan의 탐색 범위</a>
+<a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+</aside><main class="doc-main" id="main-content">
+<header class="doc-header"><h1>부분범위처리·정렬·배치 I/O</h1><p class="doc-purpose">2장 세 번째 절 · 필요한 만큼 먼저 반환하는 처리와 전체 입력이 필요한 정렬, 배치 접근이 결과 순서에 미치는 영향을 정리합니다. Oracle 기준입니다.</p></header>
+<section class="doc-section"><h2>부분범위처리와 커서</h2>
+<p>부분범위처리는 전체 결과를 끝까지 처리하기 전에 필요한 만큼 먼저 처리해 반환하는 방식입니다. 같은 SQL 실행의 커서를 유지하면 다음 FETCH에서 실행 상태를 이어받아 처리를 계속할 수 있습니다. FETCH 단위에는 클라이언트 드라이버의 버퍼링과 미리 읽기도 영향을 주므로, 반환한 행 수와 내부에서 처리한 행 수가 정확히 같다는 뜻은 아닙니다.</p>
+<pre>SQL 실행 → FETCH로 앞의 50행 반환
+        → 커서와 실행 상태 유지
+        → 다음 FETCH로 이어서 처리</pre>
+<p>여기서 다음 요청은 같은 커서에 대한 FETCH 호출입니다. SQL을 새로 실행하거나 별도 웹 요청으로 페이지를 조회하면 기존 커서의 위치를 자동으로 이어받지 않습니다. 커서를 닫거나 실행 상태를 잃으면 그대로 재개할 수 없습니다.</p>
+<aside class="doc-callout">결과를 여러 번 나누어 받는다는 사실만으로 부분범위처리는 아닙니다. 첫 결과를 반환하기 전에 전체 입력을 처리해야 하는 연산이 있는지 확인해야 합니다.</aside>
+</section>
+<section class="doc-section"><h2>정렬이 첫 결과를 늦추는 이유</h2>
+<p>일반적인 ORDER BY 정렬은 정렬 대상 전체를 읽어야 가장 앞에 올 행을 확정할 수 있습니다. 따라서 클라이언트가 50행만 요청해도 그 전에 전체 정렬 입력을 읽는 작업이 필요합니다. 이때 전체 범위는 테이블 전체가 아니라 조회 조건을 통과해 해당 정렬에 들어오는 데이터 전체입니다.</p>
+<pre>별도 정렬 필요:
+조건에 맞는 입력 전체 읽기 → 정렬 → 결과 반환
+
+인덱스 순서로 ORDER BY 충족:
+순서에 맞춰 인덱스 접근 → 필요한 만큼 먼저 반환 가능</pre>
+<p>정렬 컬럼이 인덱스에 있다는 것만으로는 정렬을 생략할 수 없습니다. 조회 조건, 인덱스 컬럼 순서와 방향, 실행계획의 다른 연산까지 원하는 순서를 충족해야 합니다. 적합한 인덱스로 ORDER BY를 충족하면 실행계획에 별도의 SORT ORDER BY가 없어도 정렬된 결과를 반환할 수 있습니다.</p>
+<p>상위 N행 정렬은 전체 결과를 완전히 정렬하는 대신 후보를 줄여 메모리와 정렬 비용을 아낄 수 있습니다. 그래도 입력이 원하는 순서로 제공되지 않으면 보통 후보 입력 전체를 확인해야 합니다. 반환 행 수가 적다는 이유만으로 입력 읽기까지 적다고 판단하지 않습니다.</p>
+</section>
+<section class="doc-section"><h2>Sort Area와 TEMP</h2>
+<p>정렬은 먼저 메모리 작업 영역에서 수행합니다. 메모리 안에서 끝나면 TEMP를 사용하지 않고, 할당된 메모리로 부족하면 중간 정렬 결과를 TEMP의 임시 세그먼트에 기록하고 다시 읽으며 처리합니다.</p>
+<table><thead><tr><th>상황</th><th>정렬 작업</th><th>첫 결과 전 전체 입력 확인</th></tr></thead><tbody>
+<tr><th>메모리 충분</th><td>메모리에서 정렬</td><td>일반적인 전체 정렬에서는 필요</td></tr>
+<tr><th>메모리 부족</th><td>메모리와 TEMP를 이용해 정렬</td><td>필요하며 임시 영역 I/O도 추가될 수 있음</td></tr>
+</tbody></table>
+<p>TEMP 사용 여부와 부분범위처리 가능 여부는 별개입니다. 메모리에서 정렬을 끝내도 전체 입력을 읽어야 할 수 있습니다.</p>
+</section>
+<section class="doc-section"><h2>배치 I/O와 ROWID 배치 접근</h2>
+<p>필요한 블록이 캐시에 없을 때마다 읽기 완료를 건건이 기다리는 비용을 줄이기 위해, 여러 블록의 읽기 요청을 모아 처리할 수 있습니다. 이것이 흩어진 모든 블록을 한 번의 연속 읽기로 가져온다는 뜻은 아닙니다.</p>
+<p>Oracle 실행계획의 TABLE ACCESS BY INDEX ROWID BATCHED는 인덱스에서 ROWID 여러 개를 모은 뒤 블록 순서로 행에 접근하려는 방식입니다. 같은 블록의 행들을 함께 방문하면 블록을 반복해서 접근하는 횟수를 줄일 수 있습니다. 읽기 요청을 묶는 것과 ROWID 접근 순서를 재배치하는 것은 구분합니다.</p>
+<pre>인덱스에서 얻은 ROWID가 가리키는 블록:
+A → C → A → B
+
+배치 내 접근 재배치의 개념:
+A → A → B → C</pre>
+<p>위 예는 블록 접근을 설명하기 위한 개념도입니다. 모든 배치가 항상 이 순서로 처리되거나, 전체 결과가 블록 순서로 정렬된다는 보장은 없습니다. 배치 단위로 처리하므로 배치 접근 자체가 전체 결과를 모아 정렬해야 한다는 뜻도 아닙니다.</p>
+</section>
+<section class="doc-section"><h2>인덱스 순서에 기대도 되는가?</h2>
+<p>인덱스 리프를 키 순서로 읽고 각 ROWID를 즉시 따라가면 결과도 키 순서처럼 보일 수 있습니다. 그 순서에 익숙한 애플리케이션에서는 배치 접근 도입이나 실행계획 변경으로 순서가 달라질 때 혼선이 생길 수 있습니다.</p>
+<p>그러나 SQL 결과의 순서가 업무상 필요하면 최종 ORDER BY로 명시해야 합니다. 인덱스의 물리적인 탐색 순서는 실행 방법의 속성이고, ORDER BY는 쿼리가 요구하는 결과 순서입니다. 옵티마이저는 명시된 순서를 지키는 범위에서 실행 방법을 선택해야 합니다.</p>
+<pre>SELECT 주문번호, 주문일
+FROM 주문
+WHERE 고객번호 = :고객번호
+ORDER BY 주문일, 주문번호;</pre>
+<p>같은 주문일의 행들 사이에서도 안정적인 순서가 필요하다면 주문번호처럼 순서를 구별할 수 있는 키를 함께 지정합니다. ORDER BY가 있어도 적합한 인덱스를 사용하면 별도 정렬 없이 반환할 수 있습니다.</p>
+<p>배치 접근을 제어하는 NO_BATCH_TABLE_ACCESS_BY_ROWID 힌트도 있습니다. 이는 특정 접근 방식을 억제하기 위한 수단입니다. 배치 접근을 막았다는 사실만으로 ORDER BY 없는 결과의 순서가 보장되지는 않습니다. 적용 여부와 성능 효과는 사용 중인 버전의 실제 실행계획으로 확인합니다.</p>
+<aside class="doc-callout">블록 접근 순서를 바꾸는 배치 최적화와 결과를 원하는 순서로 반환하는 ORDER BY는 서로 다른 역할입니다. 정렬 보장은 ORDER BY에 맡기고, 인덱스와 배치 접근은 그 요구를 만족시키는 실행 비용 관점에서 판단합니다.</aside>
+</section>
+<section class="doc-section"><h2>참고 자료</h2><ul>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/sql-processing.html">Oracle: SQL 실행과 FETCH 처리</a></li>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/optimizer-access-paths.html">Oracle: ROWID BATCHED 접근과 인덱스를 통한 정렬 생략</a></li>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/12.2/tgsql/optimizer-access-paths.html">Oracle: 정렬 결과가 필요하면 ORDER BY 명시</a></li>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/cncpt/memory-architecture.html">Oracle: SQL 작업 영역과 임시 디스크 저장</a></li>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/SORT_AREA_SIZE.html">Oracle: 정렬 메모리가 부족할 때 임시 세그먼트 사용</a></li>
+<li><a href="https://blogs.oracle.com/otnjp/tsushima-hakushi-34">Oracle 기술 블로그: ROWID 배치 접근과 억제 힌트</a></li>
+</ul></section>
+</main></body></html>

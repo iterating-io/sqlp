@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>인덱스 튜닝과 컬럼 순서 · SQL 학습 노트</title>
+  <style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    pre { overflow:auto; padding:16px; background:#f3f6f8; border-radius:8px; font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+    <nav class="doc-nav" aria-label="1장 하위 주제">
+      <a href="archive/001-sql-processing.html">001 · SQL 처리, 캐시와 실행 계획</a>
+      <a href="002-oracle-storage-structure.html">002 · Oracle 저장 구조와 데이터 파일</a>
+      <a href="003-io-tuning.html">003 · I/O 튜닝과 SQL의 읽기량</a>
+      <a href="004-oracle-storage-io-summary.html">004 · Oracle 저장 구조·I/O·캐시 요약</a>
+      <a href="005-oracle-index-scan.html">005 · 인덱스의 수직 탐색과 수평 탐색</a>
+      <a href="006-oracle-index-block-rowid-trees.html">006 · 인덱스 블록·ROWID와 B+·B* 트리</a>
+      <a href="007-oracle-index-block-entry.html">007 · 인덱스 블록과 엔트리</a>
+      <a href="008-oracle-row-vs-index-entry.html">008 · 테이블 레코드와 인덱스 엔트리</a>
+      <a href="009-oracle-table-index-storage-hierarchy.html">009 · 테이블·인덱스의 블록 저장 관계</a>
+      <a href="010-oracle-index-tuning-and-column-order.html" aria-current="page">010 · 인덱스 튜닝과 컬럼 순서</a>
+      <a href="011-oracle-composite-index-leading-column.html">011 · 복합 인덱스의 선두 컬럼 선택</a>
+      <a href="012-oracle-use-concat-mysql-index-merge.html">012 · Oracle USE_CONCAT과 MySQL Index Merge</a>
+      <a href="013-or-index-order-by-sort-io.html">013 · OR·IN 조건과 ORDER BY 정렬 I/O</a>
+      <a href="014-oracle-range-scan-minmax-first-rows.html">014 · 역방향 스캔, MIN/MAX와 FIRST_ROWS</a>
+      <a href="015-oracle-index-full-scan-vs-table-full-scan.html">015 · Index Full Scan과 Table Full Scan</a>
+      <a href="016-oracle-index-fast-full-scan.html">016 · Index Fast Full Scan의 사용 시점</a>
+      <a href="017-oracle-index-skip-scan.html">017 · Index Skip Scan과 비용 판단</a>
+    <a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+  </aside>
+  <main class="doc-main" id="main-content">
+    <header class="doc-header"><h1>인덱스 튜닝과 컬럼 순서</h1><p class="doc-purpose">인덱스 스캔 비용, ROWID를 이용한 테이블 접근, 복합 인덱스의 선두 컬럼을 구분합니다.</p></header>
+    <section class="doc-section" aria-labelledby="cost-title">
+      <h2 id="cost-title">인덱스 튜닝에서 볼 두 비용</h2>
+      <p>인덱스 튜닝을 이해할 때 두 단계로 나누어 보는 것은 유용합니다.</p>
+      <ol>
+        <li><strong>인덱스 블록 탐색과 스캔:</strong> 루트부터 시작 리프를 찾고, 조건에 맞는 키 범위를 얼마나 읽는지 봅니다.</li>
+        <li><strong>테이블 행 접근:</strong> 인덱스 리프에서 얻은 <code>ROWID</code>로 테이블 블록을 읽습니다. 쿼리에 필요한 컬럼이 모두 인덱스 안에 있으면 테이블 접근을 생략할 수도 있습니다.</li>
+      </ol>
+      <p>따라서 인덱스 스캔 자체가 짧아도, 결과가 많은 행을 가리키고 그 행들이 여러 테이블 블록에 흩어져 있으면 테이블 접근 비용이 클 수 있습니다. 인덱스의 <strong>클러스터링 팩터</strong>는 키 순서와 테이블 행의 물리적 배치가 얼마나 가까운지 나타내며, 옵티마이저가 인덱스와 전체 테이블 스캔의 비용을 비교할 때 참고합니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="io-title">
+      <h2 id="io-title">SQL 튜닝의 목표는 랜덤 I/O만 줄이는 것일까?</h2>
+      <p>불필요한 테이블 블록 접근, 특히 흩어진 <code>ROWID</code>를 따라가는 물리적 단일 블록 읽기를 줄이는 것은 중요한 튜닝 방향입니다. 하지만 SQL 튜닝 전체를 “랜덤 디스크 I/O 줄이기”로 한정할 수는 없습니다. 튜닝 목표는 보통 응답 시간을 줄이거나 처리량을 높이고, SQL이 쓰는 데이터베이스 자원을 더 효율적으로 활용하는 것입니다.</p>
+      <p>선택도가 낮아 많은 행을 읽어야 한다면, 인덱스를 따라 여러 블록을 따로 읽는 것보다 테이블 전체를 순차적으로 읽는 다중 블록 I/O가 더 저렴할 수 있습니다. 또한 필요한 인덱스 블록이나 테이블 블록이 버퍼 캐시에 있으면 디스크 I/O가 발생하지 않습니다. 그러므로 실행 계획과 실제 병목을 보고 접근 경로를 판단해야 합니다.</p>
+      <aside class="doc-callout">수평 탐색은 범위 안의 인덱스 엔트리를 모두 읽기 위한 과정입니다. 엔트리에서 얻은 ROWID로 테이블 행을 찾는 단계는 별도이며, 인덱스만으로 쿼리 결과를 만들 수 있으면 생략될 수 있습니다.</aside>
+    </section>
+    <section class="doc-section" aria-labelledby="column-order-title">
+      <h2 id="column-order-title">SQL 조건의 나열 순서와 인덱스 컬럼 순서</h2>
+      <p>여기서 “순서”는 두 가지를 구분해야 합니다.</p>
+      <pre aria-label="WHERE 조건의 나열 순서와 인덱스 정의 순서 비교">WHERE customer_id = :c AND order_date >= :d
+WHERE order_date >= :d AND customer_id = :c
+
+인덱스 (customer_id, order_date)
+인덱스 (order_date, customer_id)</pre>
+      <p><strong>WHERE 절에서 AND 조건을 적은 순서</strong>를 말한다면, 두 표현은 논리적으로 같은 조건이므로 보통 인덱스 성능 차이를 만들지 않습니다. 옵티마이저가 실행 계획을 선택하며, SQL 텍스트에 적힌 조건 나열 순서가 인덱스의 컬럼 순서를 바꾸지는 않습니다.</p>
+      <p><strong>복합 인덱스를 정의한 컬럼 순서</strong>를 말한다면 결과는 달라질 수 있습니다. <code>(customer_id, order_date)</code>는 customer_id만 사용하는 검색이나 두 조건을 함께 쓰는 검색에 선두 범위를 제공합니다. 반면 <code>(order_date, customer_id)</code>는 order_date가 선두입니다. 모든 컬럼을 동등 조건으로 조회하면 두 인덱스 모두 후보가 될 수 있지만, 성능이 항상 같다고 보장되지는 않습니다. 다른 쿼리, 범위 조건, 정렬, 키 분포에 따라 유리한 순서가 달라집니다.</p>
+      <p>선두 컬럼을 조건에 쓰지 않는 경우 일반적인 인덱스 범위 스캔은 불리하거나 사용할 수 없을 수 있습니다. Oracle은 선두 컬럼의 값 종류가 적은 경우 <strong>인덱스 스킵 스캔</strong>을 고려할 수 있지만, 이는 예외적인 접근 경로이며 선두 컬럼을 사용하는 것과 같은 성능을 보장하지 않습니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="sources-title">
+      <h2 id="sources-title">참고 자료</h2>
+      <ul>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/indexes-and-index-organized-tables.html">Oracle Database Concepts: Composite Indexes and Clustering Factor</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/tgsql/optimizer-access-paths.html">Oracle Database SQL Tuning Guide: Optimizer Access Paths</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/concepts-for-database-administrators.html">Oracle Database Concepts: Performance and Tuning</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

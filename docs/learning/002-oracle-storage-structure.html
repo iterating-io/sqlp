@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oracle 저장 구조와 데이터 파일 · SQL 학습 노트</title>
+  <style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+    <nav class="doc-nav" aria-label="1장 하위 주제">
+      <a href="archive/001-sql-processing.html">001 · SQL 처리, 캐시와 실행 계획</a>
+      <a href="002-oracle-storage-structure.html" aria-current="page">002 · Oracle 저장 구조와 데이터 파일</a>
+      <a href="003-io-tuning.html">003 · I/O 튜닝과 SQL의 읽기량</a>
+      <a href="004-oracle-storage-io-summary.html">004 · Oracle 저장 구조·I/O·캐시 요약</a>
+      <a href="005-oracle-index-scan.html">005 · 인덱스의 수직 탐색과 수평 탐색</a>
+      <a href="006-oracle-index-block-rowid-trees.html">006 · 인덱스 블록·ROWID와 B+·B* 트리</a>
+      <a href="007-oracle-index-block-entry.html">007 · 인덱스 블록과 엔트리</a>
+      <a href="008-oracle-row-vs-index-entry.html">008 · 테이블 레코드와 인덱스 엔트리</a>
+      <a href="009-oracle-table-index-storage-hierarchy.html">009 · 테이블·인덱스의 블록 저장 관계</a>
+      <a href="010-oracle-index-tuning-and-column-order.html">010 · 인덱스 튜닝과 컬럼 순서</a>
+      <a href="011-oracle-composite-index-leading-column.html">011 · 복합 인덱스의 선두 컬럼 선택</a>
+      <a href="012-oracle-use-concat-mysql-index-merge.html">012 · Oracle USE_CONCAT과 MySQL Index Merge</a>
+      <a href="013-or-index-order-by-sort-io.html">013 · OR·IN 조건과 ORDER BY 정렬 I/O</a>
+      <a href="014-oracle-range-scan-minmax-first-rows.html">014 · 역방향 스캔, MIN/MAX와 FIRST_ROWS</a>
+      <a href="015-oracle-index-full-scan-vs-table-full-scan.html">015 · Index Full Scan과 Table Full Scan</a>
+      <a href="016-oracle-index-fast-full-scan.html">016 · Index Fast Full Scan의 사용 시점</a>
+      <a href="017-oracle-index-skip-scan.html">017 · Index Skip Scan과 비용 판단</a>
+    <a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+  </aside>
+  <main class="doc-main" id="main-content">
+    <header class="doc-header"><h1>Oracle 저장 구조와 데이터 파일</h1><p class="doc-purpose">세그먼트·익스텐트·데이터 블록은 Oracle의 논리적 공간 단위이며, 데이터 파일은 이를 디스크에 담는 물리적 파일입니다.</p></header>
+    <section class="doc-section" aria-labelledby="classification-title">
+      <h2 id="classification-title">논리 구조인가, 물리 구조인가?</h2>
+      <p><strong>세그먼트 → 익스텐트 → Oracle 데이터 블록은 모두 논리적 저장 구조</strong>입니다. Oracle이 공간을 나누고 객체에 할당하는 단위이며 운영체제가 이 이름과 경계를 직접 인식하지는 않습니다.</p>
+      <p>데이터 파일(data file)은 테이블스페이스의 내용을 실제로 저장하는 물리적 파일입니다. 파일 시스템이나 ASM 같은 저장 계층을 통해 디스크에 존재하고, 운영체제 블록에 저장됩니다.</p>
+      <aside class="doc-callout">블록은 논리 단위지만 실제 디스크의 일정 바이트에 대응합니다. 따라서 “물리 저장과 연결되어 있다”는 말은 맞지만, Oracle 블록을 곧바로 디스크 섹터나 OS 블록과 같은 것으로 보면 안 됩니다.</aside>
+    </section>
+    <section class="doc-section" aria-labelledby="hierarchy-title">
+      <h2 id="hierarchy-title">세그먼트, 익스텐트, 블록의 관계</h2>
+      <ul><li><strong>세그먼트:</strong> 테이블 데이터나 인덱스처럼 하나의 논리 저장 구조에 할당된 익스텐트들의 집합입니다.</li><li><strong>익스텐트:</strong> 한 번에 할당되는, 논리적으로 연속된 여러 데이터 블록입니다.</li><li><strong>데이터 블록:</strong> Oracle이 데이터를 읽고 쓰는 최소 논리 단위입니다. Oracle 문서에서는 이를 Oracle block 또는 page라고도 부릅니다.</li></ul>
+      <p>테이블·인덱스 같은 <strong>스키마 객체</strong>는 스키마 안에서 이름과 의미를 갖는 논리 구조이고, <strong>세그먼트</strong>는 그 객체의 저장 구조에 공간을 할당하고 추적하는 단위입니다. 모든 객체가 실제 데이터를 저장하는 것은 아닙니다. 테이블은 행을 저장하고 인덱스는 인덱스 항목을 저장하지만, 뷰는 질의 정의를 가진 메타데이터이므로 자체 데이터 세그먼트가 없습니다. 객체를 “논리적 정의이면서 실제 데이터를 가진 것”이라고 일반화하기보다는, 저장 객체의 정의와 실제 저장 공간을 구분하면 정확합니다.</p>
+      <p>단순한 비분할 테이블은 보통 테이블 데이터 세그먼트 하나에 대응하므로 객체가 익스텐트를 직접 묶는다고 생각해도 큰 문제는 없지만, Oracle에서는 세그먼트를 거쳐 익스텐트들을 묶어 관리합니다. 분할 테이블은 파티션별 세그먼트를 가질 수 있고, 인덱스나 LOB 데이터도 별도 세그먼트를 가질 수 있어 객체와 세그먼트가 항상 일대일인 것은 아닙니다. 또한 지연 세그먼트 생성이 적용되면 테이블 정의가 있어도 첫 행을 넣기 전까지 저장 세그먼트가 만들어지지 않을 수 있습니다.</p>
+      <p>세그먼트가 익스텐트를 묶는 이유는 객체별 저장 공간의 경계와 상태를 관리하기 위해서입니다. 예를 들어 테이블에 공간이 더 필요하면 해당 세그먼트에 익스텐트를 추가해 확장하고, Oracle은 세그먼트의 블록 사용 상태와 high water mark 등을 추적합니다. 이렇게 블록을 하나씩 객체에 할당하는 대신 익스텐트 단위로 공간을 늘리면 공간 할당을 관리하기 쉽습니다. 세그먼트는 물리적으로 붙어 있는 영역이라기보다, 객체에 속한 익스텐트들을 묶는 논리적 저장 단위입니다.</p>
+      <p>테이블에 공간이 더 필요하면 Oracle은 블록 하나씩이 아니라 익스텐트를 추가로 할당해 세그먼트를 확장합니다. “논리적으로 연속”은 Oracle 주소 공간에서 연속이라는 뜻이며, RAID나 파일 시스템 때문에 실제 디스크 위치까지 연속이라고 보장하지는 않습니다.</p>
+      <p>익스텐트는 데이터 파일 하나의 블록 범위에 저장되고, 세그먼트는 자신에게 할당된 익스텐트들로 구성됩니다. 세그먼트의 첫 데이터 블록에는 이 익스텐트들의 디렉터리가 있으므로 “세그먼트가 익스텐트 참조 집합을 가진다”는 비유는 가깝지만, 익스텐트는 단순한 임의 포인터가 아니라 세그먼트에 할당된 실제 논리 저장 공간입니다.</p>
+      <p>익스텐트의 블록은 한 세그먼트에 배타적으로 할당되므로, 일반적인 테이블 데이터 세그먼트와 인덱스 세그먼트가 같은 익스텐트를 나눠 쓰지는 않습니다. 각각 자신의 익스텐트들을 가집니다. 다만 테이블 클러스터처럼 한 세그먼트 안에 여러 테이블의 데이터를 저장하는 구조도 있어, “세그먼트 하나는 언제나 테이블 객체 하나”라고 일반화할 수는 없습니다.</p>
+      <p><strong>테이블스페이스 → 세그먼트 → 익스텐트 → 데이터 블록</strong>은 Oracle 관점의 논리적 할당 관계이고, 파일 경로를 나타내는 물리 계층과는 별도로 생각하면 이해하기 쉽습니다. 여기서 화살표는 “안에 포함되거나 그 단위로 구성된다”는 뜻입니다. 각 단계가 다음 단계를 직접 관리한다는 뜻은 아닙니다.</p>
+      <p>익스텐트 하나의 블록들은 데이터 파일 안에서 논리적으로 연속하지만, 한 세그먼트의 여러 익스텐트가 파일 안에서 서로 이웃하거나 할당 순서대로 놓인다고 보장되지는 않습니다. 기본인 로컬 관리 테이블스페이스에서는 데이터 파일의 비트맵이 여유 공간을 추적하고, Oracle이 인접한 빈 블록을 찾아 익스텐트를 할당합니다. 따라서 세그먼트는 할당된 익스텐트들의 논리적 집합이고, 익스텐트 공간의 할당·해제는 테이블스페이스의 공간 관리 방식이 담당합니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="files-title">
+      <h2 id="files-title">데이터 파일은 어디에 연결되나?</h2>
+      <p>테이블스페이스는 하나 이상의 데이터 파일을 사용합니다. 세그먼트는 한 테이블스페이스에 속하지만, 그 세그먼트의 익스텐트들은 같은 테이블스페이스 안의 여러 데이터 파일에 나뉘어 저장될 수 있습니다. 반면 <strong>익스텐트 하나는 데이터 파일 하나를 넘어서 걸치지 않습니다.</strong></p>
+      <p>예를 들어 <code>EMP</code> 테이블의 세그먼트가 <code>users01.dbf</code>에 첫 익스텐트를, <code>users02.dbf</code>에 다음 익스텐트를 가질 수 있습니다. 각 익스텐트 안에는 여러 Oracle 블록이 있고, 데이터 파일 안의 특정 블록 오프셋이 그 블록을 담습니다.</p>
+      <p>관계를 줄여 그리면 다음과 같습니다.</p>
+      <p><strong>논리:</strong> 테이블스페이스 → 세그먼트 → 익스텐트 → Oracle 블록<br><strong>물리:</strong> 테이블스페이스의 데이터 파일 → OS 저장 블록<br><strong>연결:</strong> 논리 블록은 데이터 파일의 공간에 기록되고, Oracle은 이 매핑으로 블록을 읽고 씁니다.</p>
+      <p>Oracle에서 <strong>DBA</strong>는 <em>Data Block Address</em>로, 데이터 파일 번호와 블록 번호로 Oracle 데이터 블록의 위치를 식별합니다. 이는 데이터 파일 안에서의 블록 주소이지, 디스크 장치 자체를 가리키는 주소는 아닙니다. 행을 식별하는 <code>ROWID</code>는 파일·블록 정보에 행 위치를 더한 별도의 주소입니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="summary-title">
+      <h2 id="summary-title">기억할 점</h2>
+      <p><strong>세그먼트·익스텐트·Oracle 블록은 논리적 할당 단위이고, 데이터 파일은 그 논리 공간을 디스크에 저장하는 물리 파일이다.</strong></p>
+      <p>세그먼트는 한 테이블스페이스에 속하면서 그 안의 여러 데이터 파일에 걸쳐 저장될 수 있지만, 익스텐트 하나는 항상 한 파일 안에 있습니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="sources-title">
+      <h2 id="sources-title">참고 자료</h2>
+      <ul><li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/logical-storage-structures.html">Oracle AI Database 26 · Logical Storage Structures</a></li><li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/physical-storage-structures.html">Oracle AI Database 26 · Physical Storage Structures</a></li><li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/tables-and-table-clusters.html">Oracle AI Database 26 · Tables and Table Clusters</a></li><li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/descriptions-of-common-wait-event-parameters.html">Oracle AI Database 26 · Data Block Address</a></li></ul>
+    </section>
+  </main>
+</body>
+</html>

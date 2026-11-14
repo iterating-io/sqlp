@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>인덱스 블록·ROWID와 B+·B* 트리 · SQL 학습 노트</title>
+  <style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+    <nav class="doc-nav" aria-label="1장 하위 주제">
+      <a href="archive/001-sql-processing.html">001 · SQL 처리, 캐시와 실행 계획</a>
+      <a href="002-oracle-storage-structure.html">002 · Oracle 저장 구조와 데이터 파일</a>
+      <a href="003-io-tuning.html">003 · I/O 튜닝과 SQL의 읽기량</a>
+      <a href="004-oracle-storage-io-summary.html">004 · Oracle 저장 구조·I/O·캐시 요약</a>
+      <a href="005-oracle-index-scan.html">005 · 인덱스의 수직 탐색과 수평 탐색</a>
+      <a href="006-oracle-index-block-rowid-trees.html" aria-current="page">006 · 인덱스 블록·ROWID와 B+·B* 트리</a>
+      <a href="007-oracle-index-block-entry.html">007 · 인덱스 블록과 엔트리</a>
+      <a href="008-oracle-row-vs-index-entry.html">008 · 테이블 레코드와 인덱스 엔트리</a>
+      <a href="009-oracle-table-index-storage-hierarchy.html">009 · 테이블·인덱스의 블록 저장 관계</a>
+      <a href="010-oracle-index-tuning-and-column-order.html">010 · 인덱스 튜닝과 컬럼 순서</a>
+      <a href="011-oracle-composite-index-leading-column.html">011 · 복합 인덱스의 선두 컬럼 선택</a>
+      <a href="012-oracle-use-concat-mysql-index-merge.html">012 · Oracle USE_CONCAT과 MySQL Index Merge</a>
+      <a href="013-or-index-order-by-sort-io.html">013 · OR·IN 조건과 ORDER BY 정렬 I/O</a>
+      <a href="014-oracle-range-scan-minmax-first-rows.html">014 · 역방향 스캔, MIN/MAX와 FIRST_ROWS</a>
+      <a href="015-oracle-index-full-scan-vs-table-full-scan.html">015 · Index Full Scan과 Table Full Scan</a>
+      <a href="016-oracle-index-fast-full-scan.html">016 · Index Fast Full Scan의 사용 시점</a>
+      <a href="017-oracle-index-skip-scan.html">017 · Index Skip Scan과 비용 판단</a>
+    <a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+  </aside>
+  <main class="doc-main" id="main-content">
+    <header class="doc-header"><h1>인덱스 블록·ROWID와 B+·B* 트리</h1><p class="doc-purpose">Oracle의 인덱스 노드와 블록, 엔트리 정렬, ROWID, 데이터 블록을 구분하고 B+·B* 트리 용어를 정리합니다.</p></header>
+    <section class="doc-section" aria-labelledby="nodes-title">
+      <h2 id="nodes-title">인덱스 트리의 노드는 블록인가?</h2>
+      <p>Oracle B-tree 인덱스 그림에서 각 노드는 보통 하나의 <strong>인덱스 블록</strong>을 나타냅니다. 루트 블록에서 브랜치 블록을 거쳐 리프 블록으로 내려가며, 브랜치 블록은 하위 블록을 가리키고 리프 블록은 인덱스 키와 행 위치 정보를 담습니다. 따라서 Oracle 구조를 설명할 때는 “노드 하나가 인덱스 블록 하나”로 이해해도 됩니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="ordering-title">
+      <h2 id="ordering-title">블록 안에서 무엇을 기준으로 정렬할까?</h2>
+      <p>정렬 기준은 블록의 종류와 그 안에서 말하는 엔트리에 따라 다릅니다.</p>
+      <ul>
+        <li><strong>인덱스 리프 엔트리:</strong> 인덱스 키 순으로 정렬합니다. 비고유 인덱스에서 같은 키가 여러 행에 있으면 ROWID가 보조 정렬 기준이 됩니다.</li>
+        <li><strong>인덱스 블록 내부:</strong> 엔트리 본문은 물리적으로 키 순서대로 연속 배치되지 않습니다. 대신 row directory가 키 순으로 정렬되어 있어 논리적으로 그 순서대로 찾고 순회합니다.</li>
+        <li><strong>테이블 데이터 블록:</strong> ROWID의 행 번호는 row directory의 슬롯을 가리킵니다. 이는 정렬 순서가 아니며, 테이블 행이 ROWID 순으로 저장된다는 뜻도 아닙니다.</li>
+      </ul>
+      <aside class="doc-callout">따라서 “블록 안 레코드가 ROWID 순으로 정렬된다”라고 일반화하기보다, “인덱스 리프는 키 순이며 같은 키 안에서 ROWID 순”이라고 구분하면 정확합니다.</aside>
+    </section>
+    <section class="doc-section" aria-labelledby="rowid-title">
+      <h2 id="rowid-title">ROWID와 파일·블록·행</h2>
+      <p>Oracle의 물리적 ROWID는 행을 찾는 주소입니다. 확장 ROWID에는 데이터 객체 번호, 테이블스페이스 기준 데이터 파일 번호, 그 파일 안의 블록 번호, 블록 안의 행 번호가 들어갑니다. 마지막 행 번호는 블록의 row directory 슬롯을 가리키며, 첫 슬롯 번호는 0입니다.</p>
+      <p>데이터 파일은 Oracle 데이터 블록들로 이루어지고, 테이블 행은 데이터 블록에 저장됩니다. 다만 블록은 행만으로 이루어지지 않습니다. 블록 헤더, 디렉터리, 여유 공간, 행 데이터 등이 들어갑니다. 한 행이 한 블록에 들어가지 않거나 갱신 후 블록에 맞지 않으면 여러 row piece로 나뉘어 저장될 수도 있습니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="trees-title">
+      <h2 id="trees-title">B+ 트리와 B* 트리</h2>
+      <ul>
+        <li><strong>B+ 트리:</strong> 내부 노드는 검색 경로를 정하는 구분 키와 자식 포인터를 두고, 데이터 레코드 또는 레코드를 가리키는 포인터는 리프에 둡니다. 리프끼리 연결해 범위 검색을 효율적으로 할 수 있습니다.</li>
+        <li><strong>B* 트리:</strong> 일반적인 정의에서는 노드가 가득 찼을 때 바로 나누기보다 형제 노드와 키를 먼저 재분배합니다. 형제도 가득 차면 노드 두 개를 세 개로 나누어, 루트를 제외한 노드가 대략 2/3 이상 차도록 공간 사용률을 높입니다.</li>
+      </ul>
+      <p>두 이름은 비교하는 관점이 다릅니다. B+는 데이터 항목을 어느 층에 두고 리프를 어떻게 연결하는지에, B*는 형제 재분배와 노드 점유율을 높이는 분할 규칙에 초점을 둡니다. 그래서 문맥 없이 두 이름을 서로 완전히 다른 구조의 대립으로 단정하기 어렵고, 교재마다 B*의 분류 방식도 다를 수 있습니다.</p>
+      <aside class="doc-callout">Oracle 공식 문서는 기본 인덱스를 “B-tree index”라고 부르며 루트·브랜치·리프 블록과 리프의 키·ROWID 구조를 설명합니다. 일반 Oracle 인덱스를 B* 트리라고 단정하거나, 2/3 점유율 보장을 가정하지 않는 편이 안전합니다.</aside>
+    </section>
+    <section class="doc-section" aria-labelledby="sources-title">
+      <h2 id="sources-title">참고 자료</h2>
+      <ul>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/indexes-and-index-organized-tables.html">Oracle Database Concepts: Indexes and Index-Organized Tables</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/logical-storage-structures.html">Oracle Database Concepts: Logical Storage Structures</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/sqlrf/ROWID-Pseudocolumn.html">Oracle Database SQL Language Reference: ROWID Pseudocolumn</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/tables-and-table-clusters.html">Oracle Database Concepts: Tables and Table Clusters</a></li>
+        <li><a href="https://vldb.org/cidrdb/papers/2021/cidr2021_paper21.pdf">Contention and Space Management in B-Trees (CIDR 2021)</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

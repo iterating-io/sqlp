@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Index Full Scan과 Table Full Scan · SQL 학습 노트</title>
+  <style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    pre { overflow:auto; padding:16px; background:#f3f6f8; border-radius:8px; font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+    table { width:100%; border-collapse:collapse }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top }
+    th { background:#f3f6f8 }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+    <nav class="doc-nav" aria-label="1장 하위 주제">
+      <a href="archive/001-sql-processing.html">001 · SQL 처리, 캐시와 실행 계획</a>
+      <a href="002-oracle-storage-structure.html">002 · Oracle 저장 구조와 데이터 파일</a>
+      <a href="003-io-tuning.html">003 · I/O 튜닝과 SQL의 읽기량</a>
+      <a href="004-oracle-storage-io-summary.html">004 · Oracle 저장 구조·I/O·캐시 요약</a>
+      <a href="005-oracle-index-scan.html">005 · 인덱스의 수직 탐색과 수평 탐색</a>
+      <a href="006-oracle-index-block-rowid-trees.html">006 · 인덱스 블록·ROWID와 B+·B* 트리</a>
+      <a href="007-oracle-index-block-entry.html">007 · 인덱스 블록과 엔트리</a>
+      <a href="008-oracle-row-vs-index-entry.html">008 · 테이블 레코드와 인덱스 엔트리</a>
+      <a href="009-oracle-table-index-storage-hierarchy.html">009 · 테이블·인덱스의 블록 저장 관계</a>
+      <a href="010-oracle-index-tuning-and-column-order.html">010 · 인덱스 튜닝과 컬럼 순서</a>
+      <a href="011-oracle-composite-index-leading-column.html">011 · 복합 인덱스의 선두 컬럼 선택</a>
+      <a href="012-oracle-use-concat-mysql-index-merge.html">012 · Oracle USE_CONCAT과 MySQL Index Merge</a>
+      <a href="013-or-index-order-by-sort-io.html">013 · OR·IN 조건과 ORDER BY 정렬 I/O</a>
+      <a href="014-oracle-range-scan-minmax-first-rows.html">014 · 역방향 스캔, MIN/MAX와 FIRST_ROWS</a>
+      <a href="015-oracle-index-full-scan-vs-table-full-scan.html" aria-current="page">015 · Index Full Scan과 Table Full Scan</a>
+      <a href="016-oracle-index-fast-full-scan.html">016 · Index Fast Full Scan의 사용 시점</a>
+      <a href="017-oracle-index-skip-scan.html">017 · Index Skip Scan과 비용 판단</a>
+    <a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+  </aside>
+  <main class="doc-main" id="main-content">
+    <header class="doc-header"><h1>Index Full Scan과 Table Full Scan</h1><p class="doc-purpose">인덱스가 좁은 데이터 집합이라는 장점과 ROWID 테이블 접근 비용을 함께 비교합니다.</p></header>
+    <section class="doc-section" aria-labelledby="model-title">
+      <h2 id="model-title">큰 방향은 맞다: 인덱스가 더 좁을 수 있다</h2>
+      <p>테이블 행에는 모든 컬럼 값이 있지만, B-tree 인덱스 엔트리에는 인덱스 키와 ROWID가 중심으로 들어갑니다. 키가 테이블 행보다 좁으면 인덱스 블록 하나에 더 많은 엔트리가 들어가므로, 필요한 컬럼이 인덱스 안에 모두 있을 때 인덱스만 읽는 편이 테이블 전체보다 적은 블록을 읽을 수 있습니다.</p>
+      <p>필요한 조회 컬럼과 조건 컬럼이 인덱스에 모두 포함되어 테이블에 가지 않고 결과를 만들 수 있는 경우를 흔히 covering 또는 index-only 접근이라고 합니다. 인덱스에 없는 컬럼이 필요하면 각 결과 엔트리의 ROWID로 테이블 행도 가져옵니다. 따라서 거의 모든 행을 반환하는 비커버링 질의라면, 인덱스 엔트리를 거의 전부 읽는 데 더해 결과 엔트리 대부분의 ROWID로 테이블 블록도 방문하는 비용이 붙습니다. ROWID 접근은 묶어서 처리될 수 있지만, 테이블 블록을 한 번 훑는 Table Full Scan보다 비싸질 수 있습니다.</p>
+      <pre aria-label="비커버링 인덱스 전체 스캔과 테이블 전체 스캔의 경로">INDEX FULL SCAN
+  → 인덱스 엔트리에서 ROWID 획득
+  → TABLE ACCESS BY INDEX ROWID로 필요한 테이블 행 접근
+
+TABLE ACCESS FULL
+  → 테이블의 포맷된 블록을 한 번 순차적으로 읽고 조건 적용</pre>
+      <p>첫 번째 계획은 인덱스 스캔과 ROWID 기반 테이블 접근이 함께 있는 경로이지, 실행 계획 연산자 자체가 <code>TABLE ACCESS FULL</code>인 것은 아닙니다. 다만 조건에 맞는 행이 거의 전체이고 ROWID가 여러 블록에 흩어져 있으면 사실상 테이블의 많은 블록을 다시 찾아가게 됩니다. 이 경우 Table Full Scan은 각 테이블 블록을 한 번 읽고 인접 블록을 묶어 읽을 수 있어 더 효율적일 수 있습니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="compare-title">
+      <h2 id="compare-title">세 가지 전체 스캔 경로를 구분하기</h2>
+      <table>
+        <thead><tr><th>접근 경로</th><th>읽는 방식</th><th>주요 장점과 제한</th></tr></thead>
+        <tbody>
+          <tr><th>Table Full Scan</th><td>테이블의 포맷된 블록을 읽고 조건에 맞지 않는 행을 걸러냅니다. 인접 블록을 여러 개씩 읽을 수 있습니다.</td><td>많은 행과 컬럼을 읽는 경우, ROWID를 따라 여러 블록을 따로 찾는 것보다 유리할 수 있습니다. SQL 결과 순서는 보장하지 않습니다.</td></tr>
+          <tr><th>Index Full Scan</th><td>인덱스 전체를 키 순서대로 읽습니다. Oracle은 leaf 블록을 순서대로 읽으며 일반적으로 단일 블록 I/O를 사용합니다.</td><td>정렬 순서가 필요하거나 인덱스만으로 조회를 끝낼 수 있으면 유리할 수 있습니다. 빠진 컬럼이 필요하면 ROWID로 테이블도 읽습니다.</td></tr>
+          <tr><th>Index Fast Full Scan</th><td>인덱스 블록을 디스크에 놓인 순서로 여러 블록씩 읽습니다. 인덱스를 좁은 테이블처럼 취급합니다.</td><td>쿼리에 필요한 컬럼이 인덱스 안에 있어야 합니다. 모든 행을 대체하려면 인덱스의 모든 키가 NULL인 행이 결과에서 제외된다는 조건도 필요합니다. 키 순서를 보장하지 않아 ORDER BY 정렬을 대신할 수 없습니다.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="doc-section" aria-labelledby="cost-title">
+      <h2 id="cost-title">많은 행을 읽을수록 항상 Table Full Scan일까?</h2>
+      <p>인덱스가 필요한 컬럼을 포함하지 않고, 조건에 맞는 행이 테이블 곳곳에 많이 흩어져 있다면 인덱스 엔트리마다 ROWID로 테이블을 찾는 비용이 커집니다. 이때는 테이블 블록을 순차적으로 읽는 Table Full Scan이 더 쌀 수 있습니다. 선택도가 낮고 인덱스의 클러스터링 팩터가 좋지 않을수록 이런 판단이 쉬워집니다.</p>
+      <p>반대로 쿼리에 필요한 컬럼이 모두 좁은 인덱스 안에 있으면, 결과가 테이블 행 대부분에 해당하더라도 인덱스 전체 스캔이 더 적은 블록을 읽을 수 있습니다. 정렬된 결과가 필요하면 일반 Index Full Scan이 별도 정렬을 피할 수도 있습니다. 따라서 “전체에 가까우면 인덱스는 항상 비효율적”이라고 단정할 수 없고, 실제 읽을 블록 수와 테이블 재접근 비용을 비교해야 합니다.</p>
+      <aside class="doc-callout">요약: 넓은 범위를 읽는 비커버링 인덱스는 ROWID 테이블 접근 때문에 Table Full Scan보다 비쌀 수 있습니다. 커버링 인덱스라면 Index Full Scan 또는 Index Fast Full Scan이 여전히 유리할 수 있습니다.</aside>
+    </section>
+    <section class="doc-section" aria-labelledby="plan-title">
+      <h2 id="plan-title">실행 계획에서 확인하기</h2>
+      <ul>
+        <li><code>TABLE ACCESS FULL</code>: 테이블 블록을 전체 스캔합니다.</li>
+        <li><code>INDEX FULL SCAN</code>: 인덱스를 순서대로 모두 읽습니다. 상위 단계에 <code>TABLE ACCESS BY INDEX ROWID</code>가 있으면 테이블 행도 가져옵니다.</li>
+        <li><code>INDEX FAST FULL SCAN</code>: 인덱스 블록을 순서 없이 빠르게 읽습니다. 이 경로는 인덱스만으로 쿼리에 필요한 값을 제공할 수 있어야 합니다.</li>
+      </ul>
+    </section>
+    <section class="doc-section" aria-labelledby="sources-title">
+      <h2 id="sources-title">참고 자료</h2>
+      <ul>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/tgsql/optimizer-access-paths.html">Oracle AI Database SQL Tuning Guide: Full Table Scans and Index Scans</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/indexes-and-index-organized-tables.html">Oracle AI Database Concepts: Full Index Scan and Fast Full Index Scan</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/tgsql/optimizer-statistics-concepts.html">Oracle AI Database SQL Tuning Guide: Index Clustering Factor</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

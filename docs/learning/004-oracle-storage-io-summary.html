@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oracle 저장 구조·I/O·캐시 요약 · SQL 학습 노트</title>
+  <style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+    <nav class="doc-nav" aria-label="1장 하위 주제">
+      <a href="archive/001-sql-processing.html">001 · SQL 처리, 캐시와 실행 계획</a>
+      <a href="002-oracle-storage-structure.html">002 · Oracle 저장 구조와 데이터 파일</a>
+      <a href="003-io-tuning.html">003 · I/O 튜닝과 SQL의 읽기량</a>
+      <a href="004-oracle-storage-io-summary.html" aria-current="page">004 · Oracle 저장 구조·I/O·캐시 요약</a>
+      <a href="005-oracle-index-scan.html">005 · 인덱스의 수직 탐색과 수평 탐색</a>
+      <a href="006-oracle-index-block-rowid-trees.html">006 · 인덱스 블록·ROWID와 B+·B* 트리</a>
+      <a href="007-oracle-index-block-entry.html">007 · 인덱스 블록과 엔트리</a>
+      <a href="008-oracle-row-vs-index-entry.html">008 · 테이블 레코드와 인덱스 엔트리</a>
+      <a href="009-oracle-table-index-storage-hierarchy.html">009 · 테이블·인덱스의 블록 저장 관계</a>
+      <a href="010-oracle-index-tuning-and-column-order.html">010 · 인덱스 튜닝과 컬럼 순서</a>
+      <a href="011-oracle-composite-index-leading-column.html">011 · 복합 인덱스의 선두 컬럼 선택</a>
+      <a href="012-oracle-use-concat-mysql-index-merge.html">012 · Oracle USE_CONCAT과 MySQL Index Merge</a>
+      <a href="013-or-index-order-by-sort-io.html">013 · OR·IN 조건과 ORDER BY 정렬 I/O</a>
+      <a href="014-oracle-range-scan-minmax-first-rows.html">014 · 역방향 스캔, MIN/MAX와 FIRST_ROWS</a>
+      <a href="015-oracle-index-full-scan-vs-table-full-scan.html">015 · Index Full Scan과 Table Full Scan</a>
+      <a href="016-oracle-index-fast-full-scan.html">016 · Index Fast Full Scan의 사용 시점</a>
+      <a href="017-oracle-index-skip-scan.html">017 · Index Skip Scan과 비용 판단</a>
+    <a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+  </aside>
+  <main class="doc-main" id="main-content">
+    <header class="doc-header"><h1>Oracle 저장 구조·I/O·캐시 요약</h1><p class="doc-purpose">객체가 저장 공간을 얻는 방식부터 블록 접근, I/O와 캐시까지 한눈에 정리합니다.</p></header>
+    <section class="doc-section" aria-labelledby="storage-title">
+      <h2 id="storage-title">객체와 저장 구조</h2>
+      <p><strong>객체</strong>(예: 테이블, 인덱스)는 데이터베이스의 논리적 대상입니다. 실제 공간을 쓰는 저장 구조에는 <strong>세그먼트</strong>가 사용됩니다. 테이블 데이터와 인덱스는 별도 세그먼트일 수 있고, 뷰처럼 메타데이터만 가지는 객체는 세그먼트가 없을 수 있습니다.</p>
+      <p><strong>테이블스페이스 → 세그먼트 → 익스텐트 → 데이터 블록</strong>은 Oracle의 논리적 저장·할당 계층입니다. 세그먼트는 익스텐트들을 묶어 객체의 저장 공간을 추적하고 필요할 때 확장합니다. 익스텐트는 논리적으로 연속된 여러 Oracle 블록을 한 번에 할당한 단위입니다.</p>
+      <p>데이터 파일은 블록을 담는 물리 파일입니다. 세그먼트의 익스텐트들은 같은 테이블스페이스 안의 여러 데이터 파일에 놓일 수 있지만, 익스텐트 하나는 한 데이터 파일 안에 있습니다. 로컬 관리 테이블스페이스는 비트맵으로 여유 공간을 추적합니다.</p>
+      <p><strong>DBA</strong>(Data Block Address)는 데이터 파일 번호와 블록 번호로 블록 위치를 식별합니다. 이는 디스크 장치 주소가 아닙니다. <code>ROWID</code>는 파일·블록 정보에 행 위치를 더해 행을 가리킵니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="io-title">
+      <h2 id="io-title">논리적 I/O와 물리적 I/O</h2>
+      <p><strong>논리적 I/O</strong>(버퍼 I/O)는 서버 프로세스가 DB 버퍼 캐시의 블록을 읽거나 수정하는 작업입니다. 테이블·인덱스 블록 접근이 대표적입니다. 캐시 미스라면 데이터 파일에서 블록을 읽어 캐시에 올린 뒤 논리적으로 접근할 수 있고, 캐시 히트라면 논리적 접근만 합니다.</p>
+      <p>SQL 파싱은 라이브러리 캐시와 데이터 딕셔너리 캐시에서 SQL 커서, 객체 정의, 권한 등을 확인합니다. 딕셔너리 캐시 조회는 블록 버퍼 겟과 다릅니다. 다만 딕셔너리 테이블 블록을 가져오면 버퍼 캐시 접근과 경우에 따라 물리적 읽기가 생길 수 있습니다.</p>
+      <p><strong>Single-block I/O</strong>는 한 번에 블록 하나를 읽으며 인덱스 기반 접근에서 흔합니다. <strong>Multiblock I/O</strong>는 여러 인접 블록을 한 번에 읽으며 전체 테이블 스캔과 인덱스 fast full scan에서 흔합니다. 실제 요청 크기는 설정·플랫폼 한도, 캐시된 블록, 연속해서 읽을 수 있는 범위에 따라 달라지고, Oracle 전체 스캔은 익스텐트 경계에서 요청이 줄어들 수 있습니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="tuning-title">
+      <h2 id="tuning-title">BCHR와 튜닝의 관점</h2>
+      <p>버퍼 캐시 히트율(BCHR)은 관찰 구간의 적중 비율입니다. Oracle의 대표 계산식은 <code>1 - physical reads cache / (consistent gets from cache + db block gets from cache)</code>입니다. 부하 구간의 통계 차이를 비교해야 의미가 있습니다.</p>
+      <p>히트율과 접근 패턴이 비슷하면 논리적 블록 요청이 감소할수록 물리 읽기 블록도 대체로 줄지만, BCHR은 고정 법칙이 아닙니다. 실행 계획, 캐시 상태, 직접 경로 읽기 등이 관계를 바꿉니다. 물리 읽기 블록 수와 실제 I/O 요청 횟수도 같지 않을 수 있습니다. SQL 튜닝은 BCHR만 올리는 것이 아니라 불필요한 접근을 줄이고 응답 시간과 병목을 개선하는 일입니다.</p>
+      <aside class="doc-callout">큰 순차 스캔은 여러 블록을 효율적으로 읽을 수 있습니다. I/O 개수나 크기를 무조건 줄이기보다 실제 작업과 병목을 기준으로 판단합니다.</aside>
+    </section>
+    <section class="doc-section" aria-labelledby="cache-title">
+      <h2 id="cache-title">라이브러리 캐시, 버퍼 캐시, 래치</h2>
+      <p>라이브러리 캐시는 실행 가능한 SQL·PL/SQL과 재사용 가능한 커서를 저장합니다. DB 버퍼 캐시는 데이터 파일에서 읽은 Oracle 데이터 블록의 사본을 저장합니다. 둘 다 SGA의 소프트웨어 관리 메모리 캐시이며 CPU 하드웨어 캐시와는 다릅니다.</p>
+      <p>버퍼 캐시에서 블록을 찾을 때 해시로 버퍼 체인을 선택하고 체인 안에서 탐색합니다. <code>cache buffers chains</code> 래치는 이 공유 메모리 구조를 검색·수정하는 짧은 구간을 보호합니다. 래치는 행이나 트랜잭션을 보호하는 enqueue 락과 다릅니다.</p>
+      <p>특정 블록이나 체인에 접근이 몰리면 래치 경합으로 대기와 동시성 저하가 생길 수 있습니다. 불필요한 버퍼 겟을 줄이는 SQL 튜닝이 도움이 되지만, 핫 블록의 원인에 따라 데이터 구조나 애플리케이션 접근 방식도 조정해야 합니다.</p>
+    </section>
+    <section class="doc-section" aria-labelledby="sources-title">
+      <h2 id="sources-title">참고 자료</h2>
+      <ul>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/logical-storage-structures.html">Oracle Logical Storage Structures</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/physical-storage-structures.html">Oracle Physical Storage Structures</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/tgsql/optimizer-access-paths.html">Oracle Optimizer Access Paths</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/tgdba/instance-tuning-using-performance-views.html">Oracle Instance Tuning Using Performance Views</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/cncpt/memory-architecture.html">Oracle Memory Architecture</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dbiad/db_dbbuffercache.html">Oracle Database Buffer Cache</a></li>
+        <li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/tgdba/tuning-database-buffer-cache.html">Oracle Tuning the Database Buffer Cache</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

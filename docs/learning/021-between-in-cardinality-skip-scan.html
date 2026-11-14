@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BETWEEN·IN과 Skip Scan의 탐색 범위 · SQL 학습 노트</title><style>
+    :root { color-scheme: light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav-heading { margin:0 0 10px; padding:8px 10px; color:var(--ink); font-weight:700; line-height:1.4 }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-nav-group > summary { padding:8px 10px; color:var(--ink); font-weight:700; cursor:pointer; border-radius:7px }
+    .doc-nav-group > summary:hover,.doc-nav-group[open] > summary { color:var(--accent); background:#edf5f5 }
+    .doc-nav-overview { display:block; margin-left:10px; font-weight:600 }
+    .doc-nav-subpages { display:grid; gap:2px; margin-left:10px; padding-left:10px; border-left:1px solid var(--line) }
+    .doc-nav-subpages a { display:block; padding:6px 10px; font-size:.92rem }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    pre { overflow:auto; padding:16px; background:#f3f6f8; border-radius:8px; font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+    table { width:100%; border-collapse:collapse }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top }
+    th { background:#f3f6f8 }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+
+    @page { margin: 14mm; }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5; }
+      .doc-sidebar { display:none !important; }
+      .doc-main { max-width:none; margin:0; padding:0; }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; color:#111; background:#fff; border:0; border-radius:0; }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid; }
+      h1 { font-size:20pt; }
+      h2 { font-size:14pt; }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere; }
+      .doc-callout { padding:8pt 10pt; color:#111; background:#fff; border:1px solid #555; border-left:4px solid #333; }
+      code { padding:0; color:#111; background:transparent; }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; color:#111; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto; }
+      table { width:100%; border-collapse:collapse; break-inside:auto; }
+      thead { display:table-header-group; }
+      tr { break-inside:avoid; page-break-inside:avoid; }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere; }
+      a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+    }
+  </style></head><body>
+<aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← 홈</a>
+<nav class="doc-nav" aria-label="2장 하위 주제">
+<a href="018-random-io-rowid-clustering-factor.html">018 · 랜덤 I/O·ROWID·클러스터링 팩터</a>
+<a href="019-joins-covering-index-iot-clusters.html">019 · 조인 방식과 테이블 저장 구조</a>
+<a href="020-partial-fetch-sort-batched-io.html">020 · 부분범위처리·정렬·배치 I/O</a>
+<a href="021-between-in-cardinality-skip-scan.html" aria-current="page">021 · BETWEEN·IN과 Skip Scan의 탐색 범위</a>
+<a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a></nav>
+</aside><main class="doc-main" id="main-content">
+<header class="doc-header"><h1>BETWEEN·IN과 Skip Scan의 탐색 범위</h1><p class="doc-purpose">2장 네 번째 절 · 수직 탐색 횟수와 수평 스캔 범위의 교환 관계, 복합 인덱스 조건, 평균 조회 건수와 Skip Scan을 연결합니다. Oracle의 B-tree 인덱스를 기준으로 설명합니다.</p></header>
+<section class="doc-section"><h2>BETWEEN과 IN: 한 구간인가, 여러 탐색 지점인가?</h2>
+<p>BETWEEN은 양 끝값을 포함하는 범위 조건이고, IN은 지정한 값들 중 하나와 일치하는 조건입니다. 문법 자체가 실행 방법을 고정하지는 않지만, 인덱스를 사용하는 대표적인 접근 방식은 다음과 같습니다.</p>
+<table><thead><tr><th>조건</th><th>대표적인 인덱스 접근</th><th>찾는 대상</th></tr></thead><tbody>
+<tr><th>번호 BETWEEN 10 AND 30</th><td>시작점을 수직 탐색한 뒤 리프 구간을 수평 스캔</td><td>10 이상 30 이하의 모든 값</td></tr>
+<tr><th>번호 IN (10, 20, 30)</th><td>INLIST ITERATOR라면 값마다 인덱스 탐색 반복</td><td>10, 20, 30에 해당하는 값</td></tr>
+</tbody></table>
+<p>BETWEEN은 수직 탐색이 적어도 중간 구간을 많이 읽을 수 있습니다. IN은 수직 탐색을 반복하더라도 지정한 값에 해당하는 좁은 구간만 읽을 수 있습니다. 성능은 탐색 횟수뿐 아니라 읽는 인덱스 엔트리와 테이블 블록의 양까지 함께 판단합니다.</p>
+</section>
+<section class="doc-section"><h2>WHERE절 순서와 인덱스 컬럼 순서</h2>
+<p>인덱스가 (A, B)일 때 WHERE A = 10 AND B = 20과 WHERE B = 20 AND A = 10은 조건을 적은 순서가 다를 뿐입니다. 옵티마이저는 SQL의 나열 순서대로 탐색하지 않고, 인덱스 구조에 맞게 접근 조건을 판단합니다.</p>
+<p>반면 인덱스의 컬럼 순서와 조건의 종류는 스캔 범위에 영향을 줍니다. 선두 컬럼이 동등 조건이면 그 안에서 후행 컬럼으로 구간을 좁히기 쉽습니다. 선두가 넓은 범위 조건이면 후행 값이 여러 선두 값의 구간에 흩어져 있을 수 있습니다.</p>
+<table><thead><tr><th>(A, B) 인덱스 조건</th><th>일반적인 범위 스캔 특성</th></tr></thead><tbody>
+<tr><th>A = 10 AND B = 20</th><td>두 키로 좁은 구간을 찾기 쉬움</td></tr>
+<tr><th>A = 10 AND B BETWEEN 20 AND 30</th><td>A=10 구간 안에서 B의 연속 범위를 탐색</td></tr>
+<tr><th>A BETWEEN 10 AND 100 AND B = 20</th><td>B=20인 항목들이 A별로 흩어져 있어 넓은 구간을 읽으며 걸러낼 수 있음</td></tr>
+</tbody></table>
+<p>따라서 선두 컬럼들이 모두 조건에 있다는 사실만으로 충분하지 않습니다. 실제로 어디서 스캔을 시작하고 멈추는지, 중간에 얼마나 읽는지를 봅니다.</p>
+</section>
+<section class="doc-section"><h2>IN으로 수직 탐색을 늘리고 수평 스캔을 줄이기</h2>
+<p>인덱스가 (지점번호, 고객번호)이고 지점번호는 정수라고 가정합니다.</p>
+<pre>WHERE 지점번호 BETWEEN 1 AND 3
+  AND 고객번호 = 100
+
+WHERE 지점번호 IN (1, 2, 3)
+  AND 고객번호 = 100</pre>
+<p>이 가정에서는 두 조건의 대상이 같습니다. 일반적인 BETWEEN 범위 스캔은 지점 1부터 3까지 넓은 구간을 읽으며 고객번호를 확인할 수 있습니다. INLIST ITERATOR를 활용하면 다음 세 조합을 각각 탐색할 수 있습니다.</p>
+<pre>(지점번호=1, 고객번호=100)
+(지점번호=2, 고객번호=100)
+(지점번호=3, 고객번호=100)</pre>
+<aside class="doc-callout">수직 탐색 횟수는 늘지만 각 탐색 뒤의 수평 스캔 범위는 줄어듭니다. 이것이 IN으로 선두 범위 조건을 나누는 핵심입니다.</aside>
+<p>인덱스가 꼬여 있다는 뜻은 아닙니다. 인덱스의 정렬 순서와 조회 조건의 조합 때문에 넓게 읽던 것을 여러 동등 조건으로 좁히는 것입니다. IN 값이 많아지면 반복 탐색 비용도 커지고, 옵티마이저가 다른 실행 방법을 선택할 수 있습니다. BETWEEN을 IN으로 바꿀 때는 중간 값 누락 등 결과 의미가 달라지지 않는지도 먼저 확인합니다.</p>
+</section>
+<section class="doc-section"><h2>카디널리티와 값 하나당 평균 조회 건수</h2>
+<p>카디널리티는 문맥에 따라 구분해야 합니다. 실행계획의 카디널리티는 보통 연산이 반환할 것으로 예상하는 행 수이고, 컬럼의 카디널리티라고 표현할 때는 서로 다른 값 수(NDV)를 뜻하기도 합니다. 평균 카디널리티라는 표현만으로 정확한 의미를 확정하지 말고 계산 대상과 식을 확인합니다.</p>
+<p>주문 10,000건에 NULL이 없고 고객번호가 100종류라면, 고객번호 하나당 평균 행 수는 다음과 같습니다.</p>
+<pre>값 하나당 평균 행 수 = 해당 컬럼이 NULL이 아닌 행 수 / NDV
+                      = 10,000 / 100 = 100건</pre>
+<p>이는 고객번호 하나로 조회하면 평균 100건이라는 뜻입니다. 모든 고객이 실제로 100건씩 갖는다는 뜻은 아닙니다. 특정 고객에게 주문이 몰리는 분포는 히스토그램 등으로 파악합니다. IN의 각 값으로 조회할 때 몇 행을 처리할지 판단하는 데도 이 구분이 필요합니다.</p>
+</section>
+<section class="doc-section"><h2>Skip Scan: 선두 조건 없이 선두 값별 구간 탐색</h2>
+<p>Skip Scan은 인덱스 접근 방식입니다. 옵티마이저가 선택하거나 힌트로 유도할 수 있으며, 인덱스를 지정한다는 것 자체가 Skip Scan의 의미는 아닙니다.</p>
+<p>인덱스가 (등급, 고객번호)이고 조건이 WHERE 고객번호 = 100이라면, 선두 등급별 논리적인 하위 인덱스를 탐색하는 것으로 이해할 수 있습니다.</p>
+<pre>등급 A 구간 → 고객번호 100 탐색
+등급 B 구간 → 고객번호 100 탐색
+등급 C 구간 → 고객번호 100 탐색</pre>
+<p>각 구간에서도 조건과 무관한 부분은 건너뛰며 다음 선두 값의 구간에 대해 탐색을 진행합니다. 모든 리프 엔트리를 읽어 선두 값 목록부터 완성해야 한다는 모델로 이해하지 않습니다. 다만 이 논리적 설명이 구간마다 반드시 루트부터 재탐색한다거나 특정 내부 포인터로 이동한다는 구현 세부를 보장하지는 않습니다.</p>
+<table><thead><tr><th>구분</th><th>탐색할 선두 값은 어디에서 오는가?</th></tr></thead><tbody>
+<tr><th>INLIST 탐색</th><td>SQL의 IN 목록이 값을 제공</td></tr>
+<tr><th>Skip Scan</th><td>선두 조건 없이 인덱스의 선두 값별 구간을 탐색</td></tr>
+</tbody></table>
+<p>보통 선두 컬럼의 서로 다른 값이 적을수록 반복 탐색 부담이 작습니다. 선두 값의 종류가 많거나 후행 조건이 많은 행을 반환하면 전체 스캔 등 다른 방법이 더 유리할 수 있습니다.</p>
+</section>
+<section class="doc-section"><h2>참고 자료</h2><ul>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/optimizer-access-paths.html">Oracle: 인덱스 범위 스캔과 Skip Scan</a></li>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/generating-and-displaying-execution-plans.html">Oracle: INLIST ITERATOR 실행계획</a></li>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/cncpt/indexes-and-index-organized-tables.html">Oracle: 선두 값별 논리적인 하위 인덱스</a></li>
+<li><a href="https://blogs.oracle.com/optimizer/oracle-optimizer-glossary">Oracle: 행 수 추정·NDV·히스토그램 용어</a></li>
+<li><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/histograms.html">Oracle: 데이터 분포와 히스토그램</a></li>
+</ul></section>
+</main></body></html>
