@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>옵션 조건과 인덱스 범위 스캔 · SQL 학습 노트</title>
+  <style>
+    :root { color-scheme:light; --ink:#263342; --muted:#617184; --line:#dce3ea; --paper:#fff; --soft:#f3f6f8; --accent:#276b78; }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--soft); font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif }
+    .doc-sidebar { position:fixed; inset:0 auto 0 0; width:260px; overflow:auto; padding:28px 20px; background:#fff; border-right:1px solid var(--line) }
+    .doc-sidebar-title { display:block; margin-bottom:22px; color:var(--ink); font-weight:700; text-decoration:none }
+    .doc-nav { display:grid; gap:5px }
+    .doc-nav a { padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:7px }
+    .doc-nav a:hover,.doc-nav a[aria-current="page"] { color:var(--accent); background:#edf5f5 }
+    .doc-main { max-width:900px; margin:0 auto 0 260px; padding:46px clamp(24px,6vw,76px) 80px }
+    .doc-header,.doc-section { padding:28px 34px; margin-bottom:18px; background:var(--paper); border:1px solid var(--line); border-radius:14px }
+    h1,h2 { line-height:1.3 } h1 { margin:0; font-size:2rem } h2 { margin-top:0 }
+    .doc-purpose { color:var(--muted) }
+    .doc-callout { margin:20px 0; padding:14px 18px; border-left:4px solid var(--accent); background:#f0f6f6 }
+    code { padding:.12em .35em; background:#eef2f5; border-radius:4px }
+    pre { overflow:auto; padding:16px; background:#f3f6f8; border-radius:8px; font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+    table { width:100%; border-collapse:collapse }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top }
+    th { background:#f3f6f8 }
+    @media(max-width:760px) { .doc-sidebar { position:static; width:auto; border-right:0; border-bottom:1px solid var(--line) }.doc-main { margin:0; padding:24px 16px 48px }.doc-header,.doc-section { padding:22px } }
+    @page { margin:14mm }
+    @media print {
+      body { color:#111; background:#fff; font-size:11pt; line-height:1.5 }
+      .doc-sidebar { display:none!important }
+      .doc-main { max-width:none; margin:0; padding:0 }
+      .doc-header,.doc-section { margin:0 0 12pt; padding:0; background:#fff; border:0; border-radius:0 }
+      h1,h2,h3 { color:#111; break-after:avoid-page; page-break-after:avoid }
+      h1 { font-size:20pt } h2 { font-size:14pt }
+      p,li { orphans:3; widows:3; overflow-wrap:anywhere }
+      .doc-callout { padding:8pt 10pt; background:#fff; border:1px solid #555; border-left:4px solid #333 }
+      code { padding:0; background:transparent }
+      pre { max-width:100%; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; background:#fff; border:1px solid #999; border-radius:0; break-inside:auto; page-break-inside:auto }
+      table { width:100%; border-collapse:collapse; break-inside:auto }
+      thead { display:table-header-group }
+      tr { break-inside:avoid; page-break-inside:avoid }
+      th,td { padding:4pt; border:1px solid #888; overflow-wrap:anywhere }
+      a { color:inherit; overflow-wrap:anywhere }
+    }
+  </style>
+</head>
+<body>
+  <aside class="doc-sidebar" aria-label="문서 탐색">
+    <a class="doc-sidebar-title" href="../index.html">← SQL 학습 노트 홈</a>
+    <nav class="doc-nav" aria-label="관련 학습 노트">
+      <a href="011-oracle-composite-index-leading-column.html">011 · 복합 인덱스의 선두 컬럼</a>
+      <a href="012-oracle-use-concat-mysql-index-merge.html">012 · OR 변환과 Index Merge</a>
+      <a href="021-between-in-cardinality-skip-scan.html">021 · BETWEEN·IN과 탐색 범위</a>
+      <a href="022-sql-index-comprehensive-review.html">022 · SQL·인덱스 종합 복습</a>
+      <a href="023-optional-conditions-and-index-ranges.html" aria-current="page">023 · 옵션 조건과 인덱스 범위</a>
+      <a href="024-index-design-order-by-and-redundancy.html">024 · 인덱스 설계 종합</a>
+    </nav>
+  </aside>
+  <main class="doc-main" id="main-content">
+    <header class="doc-header">
+      <h1>옵션 조건과 인덱스 범위 스캔</h1>
+      <p class="doc-purpose">OR, LIKE, BETWEEN과 복합 인덱스를 함께 볼 때, 인덱스가 쓰이는지뿐 아니라 실제로 얼마나 읽는지를 판단합니다.</p>
+    </header>
+    <section class="doc-section">
+      <h2>범위 스캔 자체가 비효율은 아니다</h2>
+      <p><code>BETWEEN</code>이나 <code>LIKE 'ABC%'</code>는 인덱스에서 일정한 키 범위를 읽는 범위 스캔으로 처리될 수 있습니다. 범위가 좁으면 효율적입니다. 조건에 맞는 행이 많아 인덱스 항목을 많이 읽고 테이블도 많이 방문해야 할 때는 전체 테이블 스캔이 더 저렴할 수 있습니다.</p>
+      <aside class="doc-callout">판단 기준은 “범위 스캔인가?”가 아니라 “인덱스에서 몇 항목을 읽고, 테이블 블록을 얼마나 방문하는가?”입니다.</aside>
+    </section>
+    <section class="doc-section">
+      <h2>선택 조건을 OR로 표현한 경우</h2>
+      <pre>SELECT *
+FROM 거래
+WHERE (:cust_id IS NULL OR 고객ID = :cust_id)
+  AND 거래일자 BETWEEN :dt1 AND :dt2;</pre>
+      <p><code>:cust_id</code>가 NULL이면 고객 ID 조건이 사라지고 날짜 범위의 거래를 모두 조회합니다. 이 갈래에서는 고객 ID 인덱스로 특정 고객을 찾을 수 없습니다. 그래서 책의 실행 계획처럼 <code>TABLE ACCESS FULL</code>이 선택될 수 있습니다.</p>
+      <p>이 패턴은 NULL일 때 옵션 컬럼 값이 NULL인 행까지 포함하는 의미를 보존한다는 장점이 있습니다. 반면 <code>고객ID = NVL(:cust_id, 고객ID)</code>로 단순 치환하면, 옵션 값이 NULL일 때 고객ID 자체가 NULL인 행은 비교 결과가 참이 아니어서 빠질 수 있습니다. 조건식을 바꿀 때는 성능뿐 아니라 결과가 같은지도 확인해야 합니다.</p>
+    </section>
+    <section class="doc-section">
+      <h2>OR-Expansion이 유리한 경우</h2>
+      <pre>SELECT *
+FROM 거래
+WHERE 고객ID = :cust_id
+  AND ((:dt_type = 'A' AND 거래일자 BETWEEN :dt1 AND :dt2)
+    OR (:dt_type = 'B' AND 결제일자 BETWEEN :dt1 AND :dt2));</pre>
+      <p>이 쿼리는 OR의 두 갈래 모두 <code>고객ID = :cust_id</code>로 행을 좁힙니다. 인덱스가 각각 <code>(고객ID, 거래일자)</code>, <code>(고객ID, 결제일자)</code>라면 옵티마이저가 OR을 갈래별로 나누는 OR-Expansion을 선택할 수 있습니다.</p>
+      <p>책의 실행 계획에서 <code>CONCATENATION</code>은 나뉜 갈래의 결과를 합치는 단계이고, 각 갈래의 <code>INDEX RANGE SCAN</code>은 해당 복합 인덱스를 읽는 단계입니다. 이 사례는 OR이 있어도 각 갈래에 알맞은 인덱스 접근이 가능함을 보여줍니다.</p>
+      <aside class="doc-callout">앞의 NULL 옵션 조건과 차이는 OR 문법 자체가 아닙니다. 첫 예제의 NULL 갈래에는 고객 ID로 좁힐 조건이 없지만, 이 예제는 두 갈래 모두 고객 ID 조건을 유지합니다.</aside>
+    </section>
+    <section class="doc-section">
+      <h2>LIKE 옵션 조건: 선두 조건의 선택도가 중요하다</h2>
+      <p>인덱스가 <code>(상품명, 상품분류코드)</code>일 때 다음 조건은 상품명으로 먼저 좁힌 뒤, 분류 코드의 접두어 범위를 찾을 수 있습니다.</p>
+      <pre>WHERE 상품명 = :prd_nm
+  AND 상품분류코드 LIKE :prd_cls_cd || '%'</pre>
+      <p><code>상품명</code>이 소수의 행만 찾는 선택도 높은 조건이라면 인덱스가 효율적일 가능성이 큽니다. <code>LIKE 'ABC%'</code>처럼 앞부분이 정해진 패턴은 범위 스캔이 가능하지만, <code>LIKE '%ABC'</code>는 보통 같은 방식으로 시작 범위를 정하기 어렵습니다.</p>
+      <p>반대로 필수 조건이 많은 행을 반환한다면, 옵션 조건이 빠지거나 매우 넓은 패턴일 때 인덱스 범위도 커질 수 있습니다. 예를 들어 <code>(상품대분류코드, 상품코드)</code>에서 대분류만으로 수만 행이 선택된다면, 인덱스를 훑고 각 ROWID로 테이블을 방문하는 것보다 전체 테이블 스캔이 나을 수 있습니다.</p>
+      <p>옵션 값이 실제로 들어오는 경우에 맞는 실행계획이 값이 없거나 넓은 패턴일 때도 빠르다고 보장되지는 않습니다. 바인드 값과 데이터 분포에 따라 예상 행 수와 실제 행 수가 달라질 수 있으므로 실행 통계를 확인합니다.</p>
+    </section>
+    <section class="doc-section">
+      <h2>복합 인덱스 중간 컬럼이 빠진 경우</h2>
+      <p><code>(A, B, C)</code> 인덱스는 먼저 A, 그 안에서 B, 그 안에서 C 순으로 정렬되어 있습니다.</p>
+      <pre>-- 선두 키와 중간 키로 위치를 좁히고 C 범위를 탐색
+WHERE A = 10 AND B = 20 AND C BETWEEN 5 AND 9
+
+-- B가 빠져 C 값들이 B별 구간에 흩어질 수 있음
+WHERE A = 10 AND C BETWEEN 5 AND 9</pre>
+      <p>두 번째 조건에서는 일반적인 범위 스캔이 보통 <code>A = 10</code>인 구간을 읽고, C 조건은 인덱스 항목에 대한 필터로 적용합니다. C가 인덱스에 있으므로 테이블 방문 전에 일부 행을 걸러낼 수는 있지만, 인덱스에서 읽는 항목 자체를 크게 줄이지는 못할 수 있습니다.</p>
+      <p>Oracle의 인덱스 스킵 스캔처럼 B의 값별 구간을 나누어 탐색하는 예외가 있습니다. 다만 비용이 유리할 때 선택되는 대안이지, 빠진 중간 컬럼을 항상 무시하고 C만으로 연속 범위를 찾는다는 뜻은 아닙니다.</p>
+    </section>
+    <section class="doc-section">
+      <h2>실행 계획에서 구분할 것</h2>
+      <table><thead><tr><th>항목</th><th>뜻</th><th>볼 점</th></tr></thead><tbody>
+        <tr><th>INDEX RANGE SCAN</th><td>인덱스 키의 일정 범위를 읽음</td><td>범위가 좁은지, 읽은 항목 수가 많은지</td></tr>
+        <tr><th>ACCESS 조건</th><td>인덱스에서 시작·종료 위치를 정하는 조건</td><td>탐색 구간을 실제로 줄이는 조건인지</td></tr>
+        <tr><th>FILTER 조건</th><td>읽어 온 후보 항목을 추가로 검사하는 조건</td><td>인덱스 항목 읽기를 줄이는지, 테이블 방문만 줄이는지</td></tr>
+        <tr><th>TABLE ACCESS BY ROWID</th><td>인덱스에서 찾은 ROWID로 테이블 행을 읽음</td><td>테이블 블록을 많이 랜덤 방문하는지</td></tr>
+        <tr><th>TABLE ACCESS FULL</th><td>테이블을 전체적으로 읽음</td><td>반환 행이 많을 때 인덱스 경로보다 저렴한지</td></tr>
+        <tr><th>CONCATENATION</th><td>분기된 결과를 결합</td><td>OR-Expansion 등 갈래별 접근이 되었는지</td></tr>
+      </tbody></table>
+      <aside class="doc-callout">실행계획의 이름만 보지 말고 예상 행 수와 실제 행 수, 논리 읽기, 테이블 방문량을 비교합니다.</aside>
+    </section>
+    <section class="doc-section">
+      <h2>한눈에 정리</h2>
+      <ul>
+        <li>범위 스캔은 LIKE 접두어 검색이나 BETWEEN에서 자연스러운 인덱스 접근 방식이며, 범위가 좁으면 효율적입니다.</li>
+        <li>범위가 넓고 많은 행을 읽으면 테이블 전체 스캔이 더 빠를 수 있습니다.</li>
+        <li>OR도 각 갈래가 인덱스로 좁혀지면 OR-Expansion으로 효율적으로 실행될 수 있습니다.</li>
+        <li>복합 인덱스의 중간 컬럼이 빠지면 후행 컬럼은 보통 범위 시작점을 정하기보다 필터로 쓰입니다. Skip Scan은 예외적인 대안입니다.</li>
+      </ul>
+      <p>관련 노트: <a href="011-oracle-composite-index-leading-column.html">복합 인덱스 선두 컬럼</a> · <a href="012-oracle-use-concat-mysql-index-merge.html">OR 변환</a> · <a href="021-between-in-cardinality-skip-scan.html">BETWEEN·IN과 탐색 범위</a> · <a href="022-sql-index-comprehensive-review.html">종합 복습</a></p>
+    </section>
+  </main>
+</body>
+</html>
