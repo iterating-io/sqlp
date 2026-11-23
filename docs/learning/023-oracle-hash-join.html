@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>해시 조인과 소트 머지 조인 · SQL 학습 노트</title><style>
+:root{color-scheme:light;--ink:#263342;--muted:#617184;--line:#dce3ea;--paper:#fff;--soft:#f3f6f8;--accent:#276b78}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--soft);font:16px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif}.doc-sidebar{position:fixed;inset:0 auto 0 0;width:260px;overflow:auto;padding:28px 20px;background:#fff;border-right:1px solid var(--line)}.doc-sidebar-title{display:block;margin-bottom:22px;color:var(--ink);font-weight:700;text-decoration:none}.doc-nav{display:grid;gap:5px}.doc-nav a{padding:8px 10px;color:var(--muted);text-decoration:none;border-radius:7px}.doc-nav a:hover,.doc-nav a[aria-current=page]{color:var(--accent);background:#edf5f5}.doc-main{max-width:980px;margin:0 auto 0 260px;padding:46px clamp(24px,5vw,64px) 80px}.doc-header,.doc-section{padding:26px 32px;margin-bottom:18px;background:#fff;border:1px solid var(--line);border-radius:14px}h1,h2,h3{line-height:1.3}h1{margin:0;font-size:2rem}h2{margin-top:0}.doc-purpose{color:var(--muted)}.doc-callout{margin:18px 0;padding:12px 16px;border-left:4px solid var(--accent);background:#f0f6f6}table{width:100%;border-collapse:collapse}th,td{padding:9px 11px;border:1px solid var(--line);text-align:left;vertical-align:top}th{background:#f3f6f8}code{padding:.12em .35em;background:#eef2f5;border-radius:4px}@media(max-width:760px){.doc-sidebar{position:static;width:auto;border-right:0;border-bottom:1px solid var(--line)}.doc-main{margin:0;padding:24px 16px 48px}.doc-header,.doc-section{padding:22px}}@page{margin:14mm}@media print{body{color:#111;background:#fff;font-size:11pt;line-height:1.5}.doc-sidebar{display:none!important}.doc-main{max-width:none;margin:0;padding:0}.doc-header,.doc-section{margin:0 0 12pt;padding:0;background:#fff;border:0;border-radius:0}h1,h2,h3{color:#111;break-after:avoid-page}h1{font-size:20pt}h2{font-size:14pt}p,li{orphans:3;widows:3;overflow-wrap:anywhere}.doc-callout{background:#fff;border:1px solid #555;border-left:4px solid #333}table{break-inside:auto}tr{break-inside:avoid}th,td{padding:4pt;overflow-wrap:anywhere}a{color:inherit;overflow-wrap:anywhere}}
+</style></head><body><aside class="doc-sidebar" aria-label="문서 탐색"><a class="doc-sidebar-title" href="../index.html">← 홈</a><nav class="doc-nav" aria-label="3장 절 목록">
+      <a href="023-oracle-hash-join.html" aria-current="page">023 · 해시 조인과 소트 머지 조인</a>
+    </nav></aside><main class="doc-main">
+<header class="doc-header">
+  <h1>해시 조인과 소트 머지 조인</h1>
+  <p class="doc-purpose">해시 조인의 두 입력을 어떻게 읽는지, PGA의 해시 테이블이 NL 조인과 비교해 어떤 비용을 줄이는지, 소트 머지 조인은 어떤 방식으로 두 입력을 결합하는지 정리합니다.</p>
+</header>
+<section class="doc-section" aria-labelledby="hash-inputs">
+  <h2 id="hash-inputs">Build와 Probe 입력의 접근 경로</h2>
+  <p>Build 단계에서는 한쪽 입력을 읽고 조인 키로 해시 테이블을 만든다. Probe 단계에서는 다른 쪽 입력을 읽고, 각 행의 조인 키로 해시 테이블에서 일치하는 행을 찾는다.</p>
+  <p>예를 들어 <code>orders.customer_id = customers.id</code>에서 <code>customers</code>가 Build 입력이면 고객 ID로 해시 테이블을 만든다. <code>orders</code>에 날짜 조건이 있고 Oracle이 날짜 인덱스를 선택하면, <code>INDEX RANGE SCAN</code>으로 읽은 주문이 Probe 입력으로 들어온다. 날짜 조건과 비용에 따라 주문을 풀 스캔할 수도 있고, Build 입력에도 인덱스 스캔을 사용할 수 있다.</p>
+  <p class="doc-callout">Range Scan은 입력 행을 읽는 접근 경로다. Probe는 읽어 온 행의 조인 상대를 찾는 단계다.</p>
+</section>
+<section class="doc-section" aria-labelledby="hash-cost">
+  <h2 id="hash-cost">Probe의 랜덤 I/O와 NL 조인 대비 PGA의 이점</h2>
+  <p>Probe 입력에서 <code>INDEX RANGE SCAN</code> 뒤에 <code>TABLE ACCESS BY INDEX ROWID</code>가 이어지면, ROWID가 가리키는 테이블 블록이 흩어져 있을 수 있다. 이때 필요한 블록이 버퍼 캐시에 없으면 랜덤 물리 I/O가 발생할 수 있다.</p>
+  <ul>
+    <li><strong>해시 조인</strong>은 Build 입력을 읽어 해시 테이블을 만든다. 해시 테이블이 PGA에 들어가면 Probe 행의 조인 상대를 메모리에서 찾는다. 작업 영역이 부족하면 TEMP를 사용하면서 추가 I/O가 생길 수 있다.</li>
+    <li><strong>인덱스를 사용하는 NL 조인</strong>은 외부 행이 들어올 때마다 내부 인덱스를 탐색하고, 필요한 경우 ROWID로 내부 테이블 블록에 접근한다. 블록이 캐시에 있어도 반복 탐색에 따른 논리 읽기와 CPU 비용이 남는다.</li>
+  </ul>
+  <p>예를 들어 주문 10만 건을 처리한다면 NL 조인은 주문을 외부 입력으로 삼아 고객 인덱스를 반복 탐색한다. 고객 해시 테이블이 PGA에 들어가면, 해시 조인은 주문을 읽은 다음 고객 인덱스를 반복 탐색하는 비용을 줄일 수 있다. 주문이 몇 건이고 고객 인덱스로 필요한 고객을 바로 찾을 수 있다면 NL 조인이 더 저렴할 수 있다.</p>
+  <p>두 계획이 같은 날짜 인덱스로 주문을 읽는다면 그 비용은 공통이다. 고객 쪽 반복 조회 비용이 해시 테이블 구축 비용보다 클수록 해시 조인이 유리하다. 주문 쪽 랜덤 I/O가 전체 실행 시간의 대부분이라면 조인 방식만 바꿔서 얻는 개선 폭은 작다.</p>
+  <p><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/joins.html">Oracle Database 19c SQL Tuning Guide · 조인 방식</a><br>
+  <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/optimizer-access-paths.html">Oracle Database 19c SQL Tuning Guide · 접근 경로</a></p>
+</section>
+<section class="doc-section" aria-labelledby="hash-temp">
+  <h2 id="hash-temp">PGA가 부족할 때 TEMP 파티션 처리</h2>
+  <p>Build 입력은 보통 필터 적용 후 해시 테이블에 담을 데이터가 더 작은 쪽을 고른다. 행 수와 함께 저장할 컬럼의 크기도 중요하다. 해시 테이블이 PGA 작업 영역을 넘으면 Oracle은 조인 키의 해시 결과를 기준으로 나눈 일부 파티션을 임시 테이블스페이스의 tempfile에 쓴다. 이 파티션은 조인 실행 중에 만들어지므로 일반 테이블에도 적용된다.</p>
+  <ol>
+    <li>고객을 Build 입력으로 삼아 고객 ID를 해싱한다. 예를 들어 고객 파티션 3이 PGA에 들어가지 않으면 TEMP에 쓴다.</li>
+    <li>주문을 읽으며 같은 기준으로 고객 ID를 해싱한다. 고객 파티션이 PGA에 있으면 바로 조회하고, TEMP에 있으면 해당 주문을 같은 번호의 임시 파티션에 모은다.</li>
+    <li>같은 번호의 파티션 쌍을 다시 읽는다. 고객 파티션 3이 작업 영역에 들어가면 해시 테이블을 만들고, 주문 파티션 3의 행을 읽으면서 조회한다. 다른 조인 키도 같은 파티션에 들어갈 수 있으므로 조회할 때 실제 조인 키를 비교한다.</li>
+  </ol>
+  <p>원본 주문의 <code>INDEX RANGE SCAN</code>은 주문을 처음 가져올 때 선택할 수 있는 접근 경로다. TEMP에서는 짝 파티션에 모인 행을 읽으며 해시 테이블을 조회한다. 파티션별 처리가 디스크에서 연속 접근을 보장하지는 않으며, TEMP에 데이터를 쓰고 다시 읽는 비용이 추가된다. 작업 영역이 부족해 여러 번 처리하면 I/O가 더 늘 수 있다.</p>
+  <p><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/joins.html">Oracle Database 19c SQL Tuning Guide · 해시 조인</a></p>
+</section>
+<section class="doc-section" aria-labelledby="sort-merge-join">
+  <h2 id="sort-merge-join">소트 머지 조인의 정렬과 병합</h2>
+  <p>소트 머지 조인은 두 입력을 조인 키 순서로 준비한 뒤, 정렬된 행을 비교하며 병합한다. 등가 조인에서 두 키가 다르면 더 작은 키를 가진 쪽을 전진시킨다. 키가 같으면 양쪽의 같은 키 그룹을 조합한다.</p>
+  <p>예를 들어 주문의 고객 ID가 <code>1, 2, 2, 4</code>이고 고객 ID가 <code>2, 3, 4</code>라면, 주문 쪽의 <code>1</code>을 지나 <code>2</code>에서 주문 두 건을 고객 한 건과 연결한다. 이어 고객 쪽의 <code>3</code>을 지나 양쪽의 <code>4</code>를 연결한다.</p>
+  <p>Oracle 19c에서는 인덱스가 조인 키 순서로 행을 공급하면 첫 번째 입력의 정렬을 생략할 수 있다. 두 번째 입력은 정렬한다. 실행 계획에서 <code>SORT JOIN</code>은 정렬을, <code>MERGE JOIN</code>은 병합을 나타낸다. 정렬 데이터가 작업 영역에 들어가지 않으면 TEMP I/O가 추가될 수 있다. 앞의 해시 조인은 해시 테이블을 만드는 비용이 들고, 소트 머지 조인은 입력을 정렬하는 비용이 들 수 있다. Oracle은 등가 조건 외에도 <code>&lt;</code>, <code>&gt;=</code> 같은 범위 조인 조건에 소트 머지 조인을 고려할 수 있다.</p>
+  <p><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/joins.html">Oracle Database 19c SQL Tuning Guide · 조인 방식</a></p>
+</section>
+</main></body></html>
